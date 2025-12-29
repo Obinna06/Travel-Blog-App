@@ -1,0 +1,180 @@
+const pool = require('../config/db');
+
+const journeyPlanController = {
+  // Get all journey plans for the logged-in user
+  getAllPlans: async (req, res) => {
+    try {
+      const [plans] = await pool.execute(
+        'SELECT * FROM journey_plans WHERE user_id = ? ORDER BY start_date DESC',
+        [req.userId]
+      );
+      
+      // Parse JSON fields (MySQL returns them as strings)
+      const parsedPlans = plans.map(plan => ({
+        ...plan,
+        locations: JSON.parse(plan.locations),
+        activities: JSON.parse(plan.activities)
+      }));
+
+      res.json(parsedPlans);
+    } catch (error) {
+      res.status(500).json({ 
+        message: 'Error fetching journey plans', 
+        error: error.message 
+      });
+    }
+  },
+
+  // Create a new journey plan
+  createPlan: async (req, res) => {
+    try {
+      const { 
+        name, 
+        locations, 
+        start_date, 
+        end_date, 
+        activities, 
+        description 
+      } = req.body;
+
+      // Validate required fields
+      if (!name || !start_date || !end_date) {
+        return res.status(400).json({ 
+          message: 'Name, start date, and end date are required' 
+        });
+      }
+
+      const [result] = await pool.execute(
+        `INSERT INTO journey_plans 
+        (user_id, name, locations, start_date, end_date, activities, description) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          req.userId,
+          name,
+          JSON.stringify(locations || []),
+          start_date,
+          end_date,
+          JSON.stringify(activities || []),
+          description || null
+        ]
+      );
+
+      res.status(201).json({ 
+        message: 'Journey plan created successfully',
+        planId: result.insertId 
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        message: 'Error creating journey plan', 
+        error: error.message 
+      });
+    }
+  },
+
+  // Update an existing journey plan
+  updatePlan: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { 
+        name, 
+        locations, 
+        start_date, 
+        end_date, 
+        activities, 
+        description 
+      } = req.body;
+
+      const [result] = await pool.execute(
+        `UPDATE journey_plans SET 
+        name = ?, 
+        locations = ?, 
+        start_date = ?, 
+        end_date = ?, 
+        activities = ?, 
+        description = ? 
+        WHERE id = ? AND user_id = ?`,
+        [
+          name,
+          JSON.stringify(locations || []),
+          start_date,
+          end_date,
+          JSON.stringify(activities || []),
+          description || null,
+          id,
+          req.userId
+        ]
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ 
+          message: 'Journey plan not found or not authorized' 
+        });
+      }
+
+      res.json({ message: 'Journey plan updated successfully' });
+    } catch (error) {
+      res.status(500).json({ 
+        message: 'Error updating journey plan', 
+        error: error.message 
+      });
+    }
+  },
+
+  // Delete a journey plan
+  deletePlan: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const [result] = await pool.execute(
+        'DELETE FROM journey_plans WHERE id = ? AND user_id = ?',
+        [id, req.userId]
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ 
+          message: 'Journey plan not found or not authorized' 
+        });
+      }
+
+      res.json({ message: 'Journey plan deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ 
+        message: 'Error deleting journey plan', 
+        error: error.message 
+      });
+    }
+  },
+
+  // Get a single journey plan by ID
+  getPlanById: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const [rows] = await pool.execute(
+        'SELECT * FROM journey_plans WHERE id = ? AND user_id = ?',
+        [id, req.userId]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({ 
+          message: 'Journey plan not found or not authorized' 
+        });
+      }
+
+      const plan = {
+        ...rows[0],
+        locations: JSON.parse(rows[0].locations),
+        activities: JSON.parse(rows[0].activities)
+      };
+
+      res.json(plan);
+    } catch (error) {
+      res.status(500).json({ 
+        message: 'Error fetching journey plan', 
+        error: error.message 
+      });
+    }
+  }
+};
+
+module.exports = journeyPlanController;
